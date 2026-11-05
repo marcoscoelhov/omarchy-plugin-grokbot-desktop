@@ -1441,6 +1441,7 @@ Item {
     var next = Object.assign({}, root.awaiting)
     next[askId] = { botId: botId, since: Date.now() }
     root.awaiting = next
+    if (!replyFiles.running) replyFiles.running = true
     if (botId === root.threadBotId) {
       root.awaitingId = askId
       return
@@ -1597,6 +1598,42 @@ Item {
     repeat: true
     running: Object.keys(root.awaiting).length > 0
     onTriggered: root.expireWaiting()
+  }
+
+  Timer {
+    interval: 1000
+    repeat: true
+    running: Object.keys(root.awaiting).length > 0
+    onTriggered: if (!replyFiles.running) replyFiles.running = true
+  }
+
+  Process {
+    id: replyFiles
+    command: ["/usr/bin/python3", "-I", root.localPath(Qt.resolvedUrl("bin/grokbot-reply-read"))]
+    clearEnvironment: true
+    environment: ({ XDG_RUNTIME_DIR: Quickshell.env("XDG_RUNTIME_DIR") || "" })
+    stdinEnabled: true
+    onStarted: {
+      replyFiles.write(JSON.stringify(Object.keys(root.awaiting)))
+      replyFiles.stdinEnabled = false
+    }
+    stdout: StdioCollector { id: replyFilesOut }
+    onExited: function (code) {
+      replyFiles.stdinEnabled = true
+      if (code !== 0) return
+      root.consumeReplyFiles(replyFilesOut.text)
+    }
+  }
+
+  function consumeReplyFiles(raw) {
+    try {
+      var lines = String(raw).trim().split("\n")
+      var answers = JSON.parse(lines[lines.length - 1])
+      if (!answers || typeof answers !== "object" || answers instanceof Array) return
+      Object.keys(answers).forEach(function (id) {
+        if (root.awaiting[id]) root.receiveReply(id, answers[id])
+      })
+    } catch (e) {}
   }
 
   function sayNotice(title, text, links) {
@@ -2187,6 +2224,7 @@ Item {
     providerProc.running = false
     providerConfigProc.running = false
     avatarBuilderProc.running = false
+    replyFiles.running = false
     if (askProc.running) askProc.running = false
   }
 

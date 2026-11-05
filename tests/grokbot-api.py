@@ -121,6 +121,43 @@ class GrokBotTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(Fault):
                 await self.adapter.call('message.reply', dict(requestId='turn', deliveryId=result['deliveryId'], text='late'))
             self.assertEqual(len([e for e in self.events if e[0] == 'message.finished']), 1)
+    async def test_deferred_private_file_finishes_and_is_removed(self):
+        await self.private_file_reply(True)
+
+    async def test_desktop_exit_10_preserves_early_reply_file_for_qml(self):
+        await self.private_file_reply(False)
+
+    async def private_file_reply(self, provider_reads):
+        from agent_desktop.reply_files import write
+        runtime = self.home/'runtime'
+        runtime.mkdir(mode=0o700)
+        self.settings(dispatch='webhook', webhookUrl='https://example.invalid/hook')
+        class Process:
+            returncode = 10
+            stdin = type('Sink', (), {'write': lambda *_: None, 'close': lambda *_: None, 'drain': lambda *_: asyncio.sleep(0)})()
+            stdout = asyncio.StreamReader()
+            stderr = asyncio.StreamReader()
+            async def wait(self): return 10
+        proc = Process()
+        proc.stdout.feed_eof(); proc.stderr.feed_eof()
+        async def spawn(*args, **kwargs): return proc
+        with patch.dict(os.environ, XDG_RUNTIME_DIR=str(runtime)), patch('agent_desktop.grokbot.asyncio.create_subprocess_exec', spawn):
+            result = await self.send(deferredReplyFiles=provider_reads)
+            write(result['deliveryId'], 'Resposta privada 🦉')
+            for _ in range(100):
+                if self.events: break
+                await asyncio.sleep(.01)
+            if not provider_reads:
+                await asyncio.sleep(.05)
+                self.assertEqual(self.events[-1][0], 'message.deferred')
+                self.assertTrue((runtime/'grokbot-desktop/replies'/ (result['deliveryId']+'.txt')).exists())
+                return
+            await self.finish()
+            self.assertEqual(self.events[-1][1]['text'], 'Resposta privada 🦉')
+            self.assertEqual(self.events[-1][1]['status'], 'completed')
+            self.assertFalse((runtime/'grokbot-desktop/replies'/ (result['deliveryId']+'.txt')).exists())
+            self.assertEqual(sum(name == 'message.finished' for name, _ in self.events), 1)
+
     async def test_deadline_emits_one_terminal_and_reaps_worker(self):
         self.settings(command=['/usr/bin/python3', '-c', 'import time; time.sleep(30)'])
         await self.send(timeoutSeconds=1)

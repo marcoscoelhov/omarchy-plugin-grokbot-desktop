@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import uuid
 
+from .reply_files import consume
 from .protocol import Fault, identifier, text, MAX_PROMPT
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -116,7 +117,16 @@ class GrokBot:
                 if code == 10:
                     row['deferred'] = True
                     self.event('message.deferred', request, deliveryId=row['delivery'], remoteMayContinue=True)
-                    await row['reply'].wait()
+                    while not row['reply'].is_set():
+                        answer = consume(row['delivery']) if row['replyFiles'] else None
+                        if answer is not None:
+                            self.event('message.finished', request, status='completed', text=answer)
+                            row['reply'].set()
+                            break
+                        try:
+                            await asyncio.wait_for(row['reply'].wait(), 1)
+                        except TimeoutError:
+                            pass
                     return
                 if code != 0:
                     errors = {2: ('invalid_config', 'Check Grok Bot dispatch settings and attachments.'),
@@ -135,7 +145,7 @@ class GrokBot:
                 error=Fault('deadline_exceeded', 'Request deadline exceeded.').data())
         except Fault as exc:
             self.event('message.finished', request, status='failed', text='', remoteMayContinue=row['remote'], error=exc.data())
-        except OSError:
+        except (OSError, ValueError):
             self.event('message.finished', request, status='failed', text='',
                 error=Fault('unavailable', 'Could not start the Grok Bot transport.').data())
         finally:
@@ -168,7 +178,9 @@ class GrokBot:
             if type(seconds) not in (int, float) or not 1 <= seconds <= 1800:
                 raise Fault('invalid_request', 'timeoutSeconds must be between 1 and 1800.')
             delivery = request if self.transport.ASK_ID.fullmatch(request) else uuid.uuid4().hex
-            row = dict(agent=agent, session='grokbot:'+agent, delivery=delivery, deferred=False,
+            if type(params.get('deferredReplyFiles', True)) is not bool:
+                raise Fault('invalid_request', 'deferredReplyFiles must be boolean.')
+            row = dict(replyFiles=params.get('deferredReplyFiles', True), agent=agent, session='grokbot:'+agent, delivery=delivery, deferred=False,
                        reply=asyncio.Event(), remote=caps['deferredReplies'])
             payload = dict(askId=delivery, botId=agent, botName=agents[agent]['shortName'], prompt=prompt,
                            attachments=attachments, host='')

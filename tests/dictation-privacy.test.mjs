@@ -284,16 +284,19 @@ test('asynchronous replies preserve private Unicode answers on the socket only',
   assert.equal(result.status, 0, result.stderr)
   assert.equal(f.requests[0], `${target}\x1freply\x1f0a1b2c3d4e5f\x1f${transcript}\x1e`)
   privateProcesses(f.observed)
+  assert.ok(!fs.existsSync(path.join(f.runtime, 'grokbot-desktop/replies')))
   assert.deepEqual(f.calls(), [])
 })
 
 test('reply failures never fall back to arguments or echo the answer', async t => {
   const f = await fixture(t)
+  await f.serve(Buffer.from('SKIP\x1e'))
   for (const input of [transcript, `${sentinel}\x1e`, sentinel.repeat(500)]) {
     const result = await f.run('grokbot-desktop-ctl', ['reply', 'abc123'], input)
     assert.notEqual(result.status, 0)
     assert.ok(!`${result.stdout}${result.stderr}`.includes(sentinel))
   }
+  assert.ok(!fs.existsSync(path.join(f.runtime, 'grokbot-desktop/replies')))
   const args = await f.run('grokbot-desktop-ctl', ['reply', 'abc123', sentinel])
   assert.equal(args.status, 2)
   assert.deepEqual(f.calls(), [])

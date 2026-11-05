@@ -20,6 +20,8 @@ async def main():
                   text=text(payload.get('prompt'), MAX_PROMPT), attachments=payload.get('attachments', []))
     seconds = timeout_seconds()
     params['timeoutSeconds'] = seconds
+    # After exit 10 the QML desktop owns deferred files; do not consume them here.
+    params['deferredReplyFiles'] = False
     provider = payload.get('provider', args.provider)
     client = client_for(provider)
     task = asyncio.current_task()
