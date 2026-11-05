@@ -1,0 +1,25 @@
+#!/usr/bin/python3 -I
+"""Consume only the desktop's pending reply IDs; private JSON over pipes."""
+import json
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from agent_desktop.reply_files import consume
+
+try:
+    asks = json.loads(sys.stdin.read(65537))
+    if not isinstance(asks, list) or len(asks) > 512:
+        raise ValueError('Invalid pending replies')
+    answers = {}
+    for ask in asks:
+        try:
+            answer = consume(ask)
+        except (OSError, ValueError):
+            continue
+        if answer is not None:
+            answers[ask] = answer
+    print(json.dumps(answers))
+except (OSError, ValueError):
+    print('Private reply files unavailable or unsafe.', file=sys.stderr)
+    sys.exit(1)

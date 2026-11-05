@@ -78,3 +78,14 @@ test('generated drafts validate before preview and apply only to the original ag
  assert.equal(ui.acceptAvatarDraft('{"script":"bad"}'),false);assert.equal(root.avatarDraft,null);
  assert.equal(ui.applyAvatarDraft(),false);assert.equal(saved,1);
 });
+
+
+test('file replies use the pending IPC reply path and ignore expired IDs',()=>{
+ const received=[];
+ const root=harness(['consumeReplyFiles'],{awaiting:{pending:{botId:'grok-1'}},
+  receiveReply(id,text){received.push([id,text]);delete this.awaiting[id]}});
+ root.consumeReplyFiles(JSON.stringify({pending:'Resposta privada 🦉',expired:'stale'}));
+ root.consumeReplyFiles(JSON.stringify({pending:'duplicate'}));
+ root.consumeReplyFiles('{broken');
+ assert.deepEqual(received,[['pending','Resposta privada 🦉']]);
+});

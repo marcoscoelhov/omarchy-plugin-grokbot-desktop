@@ -69,3 +69,7 @@ The tool needs numpy, scipy, scikit-image, and Pillow. It rewrites only the bloc
 `python3 tests/avatar-native.py` requires PySide6. Set `QT_QPA_PLATFORM=offscreen` for a headless run. This creates the actual Qt avatar component, renders bundled examples and exercises gaze/mood updates. It does not validate Quickshell or a running Omarchy desktop.
 
 The vendored Open Bot Avatar engine is built with `node scripts/vendor-avatar.mjs /path/to/open-bot-avatar`. Set `AVATAR_BUILD_PACKAGE` to the absolute package.json path of a build environment containing esbuild 0.25.12; Node 22.18+ is required. Neither Node nor esbuild is needed on the desktop at runtime. Keep the pinned revision in `data/open-bot-avatar-source.json` and MIT attribution when updating.
+
+## Private reply fallback acceptance
+
+`tests/reply-files.py`, `tests/grokbot-api.py` and `tests/desktop-state.test.mjs` cover the private writer/reader, deferred completion, removal and pending-ID routing. The socket privacy tests preserve socket priority and forbid file retry after rejection. These are portable checks. On Omarchy 4.0.6, native acceptance still requires a real deferred webhook ask answered through `grokbot-desktop-ctl reply <askId>` on stdin, verification that the panel finishes within the next poll and that the file disappears. No live Omarchy acceptance is claimed for this change.
